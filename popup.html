@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TimelineComments</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .container {
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .header p {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .status {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .status-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-label {
+      font-size: 14px;
+    }
+
+    .status-value {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .supported {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .supported h3 {
+      font-size: 14px;
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+
+    .platform-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .platform {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .platform-icon {
+      font-size: 20px;
+    }
+
+    .instructions {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 15px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .instructions h3 {
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .instructions ol {
+      margin-left: 20px;
+    }
+
+    .instructions li {
+      margin-bottom: 5px;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 11px;
+      opacity: 0.8;
+    }
+
+    .toggle-btn {
+      width: 100%;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #667eea;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 15px;
+    }
+
+    .toggle-btn:hover {
+      background: white;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .toggle-btn.disabled {
+      background: rgba(255, 255, 255, 0.3);
+      color: rgba(255, 255, 255, 0.8);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="icon">💬</div>
+      <h1>TimelineComments</h1>
+      <p>Pin comments at any moment</p>
+    </div>
+
+    <div class="status">
+      <div class="status-item">
+        <span class="status-label">Status</span>
+        <span class="status-value" id="status">Active ✓</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Current Page</span>
+        <span class="status-value" id="current-page">—</span>
+      </div>
+    </div>
+
+    <div class="supported">
+      <h3>Supported Platforms</h3>
+      <div class="platform-list">
+        <div class="platform">
+          <span class="platform-icon">🎬</span>
+          <span>Netflix</span>
+        </div>
+        <div class="platform">
+          <span class="platform-icon">✨</span>
+          <span>Disney+</span>
+        </div>
+        <div class="platform">
+          <span class="platform-icon">📺</span>
+          <span>Hulu</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="instructions">
+      <h3>How to use</h3>
+      <ol>
+        <li>Go to Netflix, Disney+, or Hulu</li>
+        <li>Start watching any show or movie</li>
+        <li>Click the 💬 button to open comments</li>
+        <li>Add comments at any timestamp!</li>
+      </ol>
+    </div>
+
+    <button class="toggle-btn" id="toggle-extension">
+      Extension Enabled
+    </button>
+
+    <div class="footer">
+      v1.0.0 • Made with ❤️
+    </div>
+  </div>
+</body>
+</html>
