@@ -7,6 +7,7 @@ class VideoCommentInjector {
     this.overlayContainer = null;
     this.contentFilter = new ContentFilter();
     this.realtimeInterval = null;
+    this.videoIdFinalized = false;
     
     this.init();
   }
@@ -25,12 +26,6 @@ class VideoCommentInjector {
     // Wait for video element to load
     this.waitForVideo();
     
-    // Extract video information
-    this.extractVideoInfo();
-    
-    // Load comments for this video
-    this.loadComments();
-    
     // Watch for navigation/URL changes (Netflix is a SPA)
     this.watchForNavigation();
   }
@@ -45,8 +40,9 @@ class VideoCommentInjector {
         console.log('TimelineComments: URL changed from', lastUrl, 'to', currentUrl);
         lastUrl = currentUrl;
         
-        // Re-extract video info
-        this.extractVideoInfo();
+        // Reset video ID state
+        this.videoIdFinalized = false;
+        this.currentVideoId = null;
         
         // Clear old comments
         this.comments = [];
@@ -57,8 +53,8 @@ class VideoCommentInjector {
           this.realtimeInterval = null;
         }
         
-        // Reload comments for new video
-        this.loadComments();
+        // Re-extract video info when video loads
+        this.extractVideoInfoWhenReady();
         
         // Re-render empty state while loading
         this.renderCommentsList();
@@ -81,6 +77,11 @@ class VideoCommentInjector {
         observer.disconnect();
         this.setupVideoListeners();
         this.injectOverlay();
+        
+        // Extract video info now that we have the video element
+        if (!this.videoIdFinalized) {
+          this.extractVideoInfoWhenReady();
+        }
       }
     });
 
@@ -94,6 +95,11 @@ class VideoCommentInjector {
     if (this.videoElement) {
       this.setupVideoListeners();
       this.injectOverlay();
+      
+      // Extract video info
+      if (!this.videoIdFinalized) {
+        this.extractVideoInfoWhenReady();
+      }
     }
   }
 
@@ -126,6 +132,228 @@ class VideoCommentInjector {
     return videos[0] || null;
   }
 
+getRealTimestamp() {
+    try {
+      if (this.platform === 'disneyplus') {
+        console.log('=== DISNEY+ TIMESTAMP DETECTION ===');
+        
+        // Find the progress-bar custom element
+        const progressBar = document.querySelector('progress-bar');
+        
+        if (progressBar) {
+          console.log('TimelineComments: Progress bar element found:', progressBar);
+          
+          // Try to access shadow DOM
+          try {
+            if (progressBar.shadowRoot) {
+              console.log('TimelineComments: Shadow DOM found!');
+              
+              const shadowInput = progressBar.shadowRoot.querySelector('input[type="range"]') ||
+                                 progressBar.shadowRoot.querySelector('[role="slider"]');
+              
+              if (shadowInput) {
+                const value = parseFloat(shadowInput.value);
+                const max = parseFloat(shadowInput.max);
+                console.log('TimelineComments: Shadow DOM slider - value:', value, 'max:', max);
+                
+                if (max > 100 && max < 86400 && value > 0) {
+                  console.log('TimelineComments: Using shadow DOM slider value:', value);
+                  return Math.floor(value);
+                }
+              }
+            }
+          } catch (e) {
+            console.log('TimelineComments: Error accessing shadow DOM:', e);
+          }
+          
+          // Try to access element properties directly
+          try {
+            console.log('TimelineComments: Checking progress-bar properties...');
+            
+            const possibleProps = [
+              'value', 'currentTime', 'current', 'position',
+              'currentValue', 'time', 'playbackTime', 'seconds'
+            ];
+            
+            for (const prop of possibleProps) {
+              try {
+                if (progressBar[prop] !== undefined && progressBar[prop] !== null) {
+                  const value = parseFloat(progressBar[prop]);
+                  console.log(`TimelineComments: Found property ${prop}:`, value);
+                  
+                  if (!isNaN(value) && value > 0 && value < 86400) {
+                    console.log('TimelineComments: Using property', prop, '=', value);
+                    return Math.floor(value);
+                  }
+                }
+              } catch (propError) {
+                // Skip this property
+              }
+            }
+          } catch (e) {
+            console.log('TimelineComments: Error checking properties:', e);
+          }
+          
+          // Try accessing via getAttribute
+          try {
+            const dataAttrs = progressBar.getAttributeNames();
+            console.log('TimelineComments: Progress bar attributes:', dataAttrs);
+            
+            for (const attr of dataAttrs) {
+              const value = progressBar.getAttribute(attr);
+              if (value && value.match(/^\d+(\.\d+)?$/)) {
+                const numValue = parseFloat(value);
+                if (!isNaN(numValue) && numValue > 10 && numValue < 86400) {
+                  console.log(`TimelineComments: Using attribute ${attr} =`, numValue);
+                  return Math.floor(numValue);
+                }
+              }
+            }
+          } catch (e) {
+            console.log('TimelineComments: Error checking attributes:', e);
+          }
+        }
+        
+        // Method 2: Look for time displays in the controls area
+        try {
+          const controlsArea = document.querySelector('.controls');
+          if (controlsArea) {
+            const timeElements = controlsArea.querySelectorAll('*');
+            const timeTexts = [];
+            
+            for (const el of timeElements) {
+              const text = (el.textContent || '').trim();
+              if (text.length < 30 && text.match(/\d{1,2}:\d{2}/)) {
+                timeTexts.push(text);
+              }
+            }
+            
+            console.log('TimelineComments: Time texts found in controls:', timeTexts);
+            
+            // Parse all times and pick the largest
+            const times = [];
+            for (const text of timeTexts) {
+              const match = text.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+              if (match) {
+                const hours = match[3] ? parseInt(match[1]) : 0;
+                const minutes = match[3] ? parseInt(match[2]) : parseInt(match[1]);
+                const seconds = match[3] ? parseInt(match[3]) : parseInt(match[2]);
+                const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+                
+                if (totalSeconds > 0 && totalSeconds < 86400) {
+                  times.push(totalSeconds);
+                }
+              }
+            }
+            
+            if (times.length > 0) {
+              const maxTime = Math.max(...times);
+              console.log('TimelineComments: Using largest time from controls:', maxTime);
+              return maxTime;
+            }
+          }
+        } catch (e) {
+          console.log('TimelineComments: Error parsing control times:', e);
+        }
+      }
+      
+      // Netflix
+      if (this.platform === 'netflix') {
+        try {
+          const timeDisplay = document.querySelector('.watch-video--player-view .watch-video--progress-control-row .time-remaining');
+          if (timeDisplay) {
+            const text = timeDisplay.textContent;
+            const match = text.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+            if (match) {
+              const hours = parseInt(match[1]);
+              const minutes = parseInt(match[2]);
+              const seconds = parseInt(match[3]);
+              return hours * 3600 + minutes * 60 + seconds;
+            }
+          }
+        } catch (e) {
+          console.log('TimelineComments: Error getting Netflix time:', e);
+        }
+      }
+      
+      // Hulu
+      if (this.platform === 'hulu') {
+        try {
+          const timeDisplay = document.querySelector('.ControlsContainer__time-display');
+          if (timeDisplay) {
+            const text = timeDisplay.textContent;
+            const match = text.match(/(\d{1,2}):(\d{2})/);
+            if (match) {
+              const minutes = parseInt(match[1]);
+              const seconds = parseInt(match[2]);
+              return minutes * 60 + seconds;
+            }
+          }
+        } catch (e) {
+          console.log('TimelineComments: Error getting Hulu time:', e);
+        }
+      }
+      
+      // Fallback
+      this.videoElement = this.findVideoElement();
+      if (this.videoElement && this.videoElement.currentTime > 0) {
+        console.warn('TimelineComments: Using video element currentTime as fallback (may be inaccurate)');
+        return Math.floor(this.videoElement.currentTime);
+      }
+      
+    } catch (e) {
+      console.error('TimelineComments: Error in getRealTimestamp:', e);
+    }
+    
+    return null;
+  }
+
+  async extractVideoInfoWhenReady() {
+    // Try immediately
+    this.extractVideoInfo();
+    
+    // If we got a valid ID, we're done
+    if (this.currentVideoId && !this.currentVideoId.includes('null') && !this.currentVideoId.includes('undefined')) {
+      this.videoIdFinalized = true;
+      await this.loadComments();
+      return;
+    }
+    
+    // Otherwise, wait for video to start loading and try again
+    console.log('TimelineComments: Waiting for video metadata...');
+    
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const checkInterval = setInterval(async () => {
+      attempts++;
+      
+      // Refresh video element reference
+      this.videoElement = this.findVideoElement();
+      
+      // Try extraction again
+      this.extractVideoInfo();
+      
+      // Check if we got a valid ID
+      if (this.currentVideoId && !this.currentVideoId.includes('null') && !this.currentVideoId.includes('undefined')) {
+        this.videoIdFinalized = true;
+        clearInterval(checkInterval);
+        console.log('TimelineComments: Video ID finalized!');
+        await this.loadComments();
+      } else if (attempts >= maxAttempts) {
+        // Give up after max attempts
+        clearInterval(checkInterval);
+        console.log('TimelineComments: Could not determine video ID after', maxAttempts, 'attempts');
+        
+        // Use whatever we have as fallback
+        if (this.currentVideoId) {
+          this.videoIdFinalized = true;
+          await this.loadComments();
+        }
+      }
+    }, 500);
+  }
+
   extractVideoInfo() {
     // Extract what's playing from URL and page metadata
     const url = window.location.href;
@@ -133,37 +361,109 @@ class VideoCommentInjector {
     
     if (this.platform === 'netflix') {
       // Netflix URL: /watch/81234567 (show/movie ID)
-      // For TV shows, episodes have: ?trackId=14170286 (episode ID)
       const match = url.match(/\/watch\/(\d+)/);
       const showId = match ? match[1] : null;
       
-      // Check for episode-specific trackId
-      const trackMatch = url.match(/[?&]trackId=(\d+)/);
+      if (!showId) {
+        this.currentVideoId = null;
+        console.log('TimelineComments: No show ID found in URL');
+        return;
+      }
       
-      if (trackMatch) {
-        // TV Episode - use showId + trackId for uniqueness
-        this.currentVideoId = `netflix_${showId}_ep_${trackMatch[1]}`;
-        console.log('TimelineComments: Detected TV Episode');
+      // Try to get episode metadata from multiple sources
+      const episodeId = this.getNetflixEpisodeId();
+      
+      if (episodeId && episodeId !== showId) {
+        // We found a specific episode ID different from the show ID
+        this.currentVideoId = `netflix_ep_${episodeId}`;
+        console.log('TimelineComments: Using episode ID:', episodeId);
       } else {
-        // Movie or show landing - just use showId
+        // Use show ID as fallback (might be a movie or we couldn't get episode ID yet)
         this.currentVideoId = `netflix_${showId}`;
-        console.log('TimelineComments: Detected Movie');
+        console.log('TimelineComments: Using show ID:', showId);
       }
       
     } else if (this.platform === 'disneyplus') {
-      // Disney+ URL: /video/[guid]
-      // Episodes have different GUIDs, so this should work
-      const match = url.match(/\/video\/([^?]+)/);
-      this.currentVideoId = match ? `disneyplus_${match[1]}` : null;
+      // Disney+ URL: /video/[guid] or /play/[guid]
+      const videoMatch = url.match(/\/video\/([^?]+)/);
+      const playMatch = url.match(/\/play\/([^?]+)/);
+      const guid = videoMatch ? videoMatch[1] : (playMatch ? playMatch[1] : null);
+      this.currentVideoId = guid ? `disneyplus_${guid}` : null;
       
     } else if (this.platform === 'hulu') {
       // Hulu URL: /watch/[id]
-      // Episodes have different IDs
       const match = url.match(/\/watch\/([^?]+)/);
       this.currentVideoId = match ? `hulu_${match[1]}` : null;
     }
 
     console.log(`TimelineComments: Video ID = ${this.currentVideoId}`);
+  }
+
+  getNetflixEpisodeId() {
+    // Method 1: Check video element source URL (most reliable when available)
+    if (this.videoElement) {
+      const videoSrc = this.videoElement.currentSrc || this.videoElement.src;
+      if (videoSrc) {
+        // Netflix video URLs contain the actual video ID
+        // Format: https://.../?o=...&v=...&movieid=XXXXX...
+        const movieIdMatch = videoSrc.match(/[?&]movieid=(\d+)/);
+        if (movieIdMatch) {
+          console.log('TimelineComments: Found episode ID in video source (movieid):', movieIdMatch[1]);
+          return movieIdMatch[1];
+        }
+        
+        // Alternative format: /.../{showId}/{episodeId}?...
+        const pathMatch = videoSrc.match(/\/(\d+)\/(\d+)\?/);
+        if (pathMatch && pathMatch[2]) {
+          console.log('TimelineComments: Found episode ID in video source (path):', pathMatch[2]);
+          return pathMatch[2];
+        }
+      }
+    }
+    
+    // Method 2: Parse from URL tctx parameter (look for actual episode identifiers)
+    const urlParams = new URLSearchParams(window.location.search);
+    const tctx = urlParams.get('tctx');
+    if (tctx) {
+      // The tctx parameter contains video ID like "Video:70143825" or "Video%3A70143825"
+      const videoMatch = tctx.match(/Video[:%](\d+)/);
+      if (videoMatch) {
+        console.log('TimelineComments: Found episode ID in tctx:', videoMatch[1]);
+        return videoMatch[1];
+      }
+    }
+    
+    // Method 3: Check Netflix's page metadata
+    try {
+      if (window.netflix && window.netflix.reactContext) {
+        const models = window.netflix.reactContext.models;
+        if (models && models.playerModel && models.playerModel.videoId) {
+          const videoId = models.playerModel.videoId;
+          console.log('TimelineComments: Found episode ID in player model:', videoId);
+          return videoId;
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+    
+    // Method 4: Check for episode metadata in page elements
+    try {
+      const playerContainer = document.querySelector('[data-videoid]');
+      if (playerContainer) {
+        const videoId = playerContainer.getAttribute('data-videoid');
+        if (videoId) {
+          console.log('TimelineComments: Found episode ID in player container:', videoId);
+          return videoId;
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+    
+    // If we can't find an episode ID, return null
+    console.log('TimelineComments: Could not determine episode ID yet');
+    return null;
   }
 
   setupVideoListeners() {
@@ -177,17 +477,34 @@ class VideoCommentInjector {
     // Listen to play/pause
     this.videoElement.addEventListener('play', () => {
       console.log('TimelineComments: Video playing');
+      
+      // When video starts playing, try to finalize video ID if not done yet
+      if (!this.videoIdFinalized) {
+        this.extractVideoInfoWhenReady();
+      }
     });
 
     this.videoElement.addEventListener('pause', () => {
       console.log('TimelineComments: Video paused');
     });
+    
+    // Listen for when video metadata is loaded
+    this.videoElement.addEventListener('loadedmetadata', () => {
+      console.log('TimelineComments: Video metadata loaded');
+      
+      // Try to finalize video ID now that we have metadata
+      if (!this.videoIdFinalized) {
+        this.extractVideoInfoWhenReady();
+      }
+    });
   }
 
   onTimeUpdate() {
-    if (!this.videoElement) return;
+    // Refresh video element reference to ensure we have the active one
+    const video = this.findVideoElement();
+    if (!video) return;
     
-    const currentTime = Math.floor(this.videoElement.currentTime);
+    const currentTime = Math.floor(video.currentTime);
     
     // Check if there are comments at this timestamp
     const activeComments = this.comments.filter(c => 
@@ -428,18 +745,27 @@ class VideoCommentInjector {
   }
 
   async handleAddComment(text) {
-    if (!text.trim() || !this.videoElement) return;
+    if (!text.trim()) return;
     
     // Filter content before sending
     const filterResult = this.contentFilter.filterContent(text);
     
     if (!filterResult.isClean) {
-      // Show error message
       this.showError(filterResult.violations.join('. '));
       return;
     }
 
-    const timestamp = this.videoElement.currentTime;
+    // Get the REAL timestamp from the platform's player
+    const timestamp = this.getRealTimestamp();
+    
+    if (timestamp === null) {
+      this.showError('Could not get current timestamp. Please try again.');
+      return;
+    }
+    
+    // Debug logging
+    console.log('TimelineComments: Real timestamp:', timestamp);
+    console.log('TimelineComments: Formatted time:', this.formatTime(timestamp));
     
     try {
       await this.saveComment(text, timestamp);
@@ -449,6 +775,9 @@ class VideoCommentInjector {
       
       // Re-render list
       this.renderCommentsList();
+      
+      // Show success message with timestamp
+      this.showSuccess(`Comment pinned at ${this.formatTime(timestamp)}`);
     } catch (error) {
       this.showError('Failed to save comment. Please try again.');
     }
@@ -476,6 +805,30 @@ class VideoCommentInjector {
     setTimeout(() => {
       errorDiv.remove();
     }, 4000);
+  }
+
+  showSuccess(message) {
+    const addCommentSection = document.getElementById('tc-add-comment');
+    if (!addCommentSection) return;
+    
+    // Remove any existing success messages
+    const existingSuccess = addCommentSection.querySelector('.tc-success-message');
+    if (existingSuccess) {
+      existingSuccess.remove();
+    }
+    
+    // Create success message element
+    const successDiv = document.createElement('div');
+    successDiv.className = 'tc-success-message';
+    successDiv.textContent = message;
+    
+    // Insert at the top of add comment section
+    addCommentSection.insertBefore(successDiv, addCommentSection.firstChild);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      successDiv.remove();
+    }, 3000);
   }
 
   renderCommentsList() {
@@ -674,8 +1027,13 @@ class VideoCommentInjector {
   }
 
   formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 

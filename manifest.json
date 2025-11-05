@@ -20,6 +20,7 @@
       "matches": [
         "https://www.netflix.com/watch/*",
         "https://www.disneyplus.com/video/*",
+        "https://www.disneyplus.com/play/*",
         "https://www.hulu.com/watch/*"
       ],
       "js": ["content-filter.js", "content.js"],
